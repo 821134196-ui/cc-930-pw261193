@@ -1,0 +1,973 @@
+{
+  "id": "payments",
+  "title": "支付确认超时 · 重复扣款",
+  "subtitle": "四进程 · 一次重试抢在幂等落库之前 · 三批证据逐步到位",
+  "incident": "14:03:00 UTC checkout r-7f21 被扣款两次。网关在 3.5s 客户端超时后重发 authorize；账本的 fsync 停顿让第一次事务迟迟未提交，重试的幂等复查因此 MISS，两个事务先后提交。两台机器的时钟在此期间还各自跳过。",
+  "baseTs": 1795701780000,
+  "referenceClock": "UTC（抓包机 / chrony）",
+  "processes": [
+    {
+      "id": "gw",
+      "name": "API 网关",
+      "short": "gw",
+      "host": "edge-01",
+      "kind": "gateway",
+      "colorSlot": 0,
+      "driftBoundPpm": 450,
+      "maxStepMs": 1200
+    },
+    {
+      "id": "ord",
+      "name": "订单服务",
+      "short": "ord",
+      "host": "app-07",
+      "kind": "service",
+      "colorSlot": 1,
+      "driftBoundPpm": 150,
+      "maxStepMs": 12
+    },
+    {
+      "id": "db",
+      "name": "账本数据库",
+      "short": "db",
+      "host": "db-03",
+      "kind": "datastore",
+      "colorSlot": 2,
+      "driftBoundPpm": 1000,
+      "maxStepMs": 320
+    },
+    {
+      "id": "cache",
+      "name": "库存缓存",
+      "short": "cache",
+      "host": "cache-02",
+      "kind": "cache",
+      "colorSlot": 3,
+      "driftBoundPpm": 500,
+      "maxStepMs": 25
+    }
+  ],
+  "batches": [
+    {
+      "id": "b1",
+      "title": "应用日志",
+      "subtitle": "网关 + 订单服务",
+      "hint": "只有两端，下游还看不见",
+      "events": [
+        {
+          "id": "gw:0",
+          "processId": "gw",
+          "seq": 0,
+          "rawTs": 1795701782500,
+          "kind": "recv",
+          "message": "POST /checkout · r-7f21",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "gw:1",
+          "processId": "gw",
+          "seq": 1,
+          "rawTs": 1795701782508,
+          "kind": "log",
+          "message": "route → order-svc",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "gw:2",
+          "processId": "gw",
+          "seq": 2,
+          "rawTs": 1795701782512,
+          "kind": "send",
+          "message": "authorize r-7f21 → ord",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "gw:3",
+          "processId": "gw",
+          "seq": 3,
+          "rawTs": 1795701786013,
+          "kind": "log",
+          "message": "upstream ack 超时 3.5s · 排队重试",
+          "requestId": "r-7f21",
+          "level": "error",
+          "batchId": "b1"
+        },
+        {
+          "id": "gw:4",
+          "processId": "gw",
+          "seq": 4,
+          "rawTs": 1795701786492,
+          "kind": "log",
+          "message": "重试退避结束 · 发出",
+          "requestId": "r-7f21",
+          "level": "warn",
+          "batchId": "b1"
+        },
+        {
+          "id": "gw:5",
+          "processId": "gw",
+          "seq": 5,
+          "rawTs": 1795701787652,
+          "kind": "send",
+          "message": "authorize r-7f21 retry#1 → ord",
+          "requestId": "r-7f21",
+          "level": "warn",
+          "batchId": "b1"
+        },
+        {
+          "id": "gw:6",
+          "processId": "gw",
+          "seq": 6,
+          "rawTs": 1795701788028,
+          "kind": "recv",
+          "message": "authorize-ok r-7f21",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "gw:7",
+          "processId": "gw",
+          "seq": 7,
+          "rawTs": 1795701788082,
+          "kind": "recv",
+          "message": "authorize-ok r-7f21 retry#1",
+          "requestId": "r-7f21",
+          "level": "warn",
+          "batchId": "b1"
+        },
+        {
+          "id": "gw:8",
+          "processId": "gw",
+          "seq": 8,
+          "rawTs": 1795701788088,
+          "kind": "log",
+          "message": "客户端报告重复扣款",
+          "requestId": "r-7f21",
+          "level": "error",
+          "batchId": "b1"
+        },
+        {
+          "id": "gw:9",
+          "processId": "gw",
+          "seq": 9,
+          "rawTs": 1795701788096,
+          "kind": "end",
+          "message": "POST /checkout 500 · duplicate charge",
+          "requestId": "r-7f21",
+          "level": "error",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:0",
+          "processId": "ord",
+          "seq": 0,
+          "rawTs": 1795701779200,
+          "kind": "recv",
+          "message": "authorize r-7f21",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:1",
+          "processId": "ord",
+          "seq": 1,
+          "rawTs": 1795701779212,
+          "kind": "log",
+          "message": "幂等键 user-8821:sku-8842 无记录",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:2",
+          "processId": "ord",
+          "seq": 2,
+          "rawTs": 1795701779218,
+          "kind": "send",
+          "message": "GET stock:sku-8842 → cache",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:3",
+          "processId": "ord",
+          "seq": 3,
+          "rawTs": 1795701779256,
+          "kind": "recv",
+          "message": "reply HIT stock=12",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:4",
+          "processId": "ord",
+          "seq": 4,
+          "rawTs": 1795701779264,
+          "kind": "log",
+          "message": "begin tx#4411",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:5",
+          "processId": "ord",
+          "seq": 5,
+          "rawTs": 1795701779268,
+          "kind": "begin",
+          "message": "tx#4411 opened",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:6",
+          "processId": "ord",
+          "seq": 6,
+          "rawTs": 1795701779278,
+          "kind": "send",
+          "message": "BEGIN tx#4411 → db",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:7",
+          "processId": "ord",
+          "seq": 7,
+          "rawTs": 1795701782212,
+          "kind": "log",
+          "message": "GC pause begin (stop-the-world)",
+          "level": "warn",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:8",
+          "processId": "ord",
+          "seq": 8,
+          "rawTs": 1795701782228,
+          "kind": "log",
+          "message": "GC pause end · 16ms",
+          "level": "warn",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:9",
+          "processId": "ord",
+          "seq": 9,
+          "rawTs": 1795701783216,
+          "kind": "recv",
+          "message": "authorize r-7f21 retry#1",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:10",
+          "processId": "ord",
+          "seq": 10,
+          "rawTs": 1795701783222,
+          "kind": "send",
+          "message": "GET idem:r-7f21 → cache",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:11",
+          "processId": "ord",
+          "seq": 11,
+          "rawTs": 1795701783248,
+          "kind": "recv",
+          "message": "reply MISS",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:12",
+          "processId": "ord",
+          "seq": 12,
+          "rawTs": 1795701783252,
+          "kind": "log",
+          "message": "幂等复查 MISS，继续下单",
+          "requestId": "r-7f21",
+          "level": "error",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:13",
+          "processId": "ord",
+          "seq": 13,
+          "rawTs": 1795701783268,
+          "kind": "log",
+          "message": "begin tx#4412",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:14",
+          "processId": "ord",
+          "seq": 14,
+          "rawTs": 1795701783272,
+          "kind": "begin",
+          "message": "tx#4412 opened",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:15",
+          "processId": "ord",
+          "seq": 15,
+          "rawTs": 1795701783280,
+          "kind": "send",
+          "message": "BEGIN tx#4412 → db",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:16",
+          "processId": "ord",
+          "seq": 16,
+          "rawTs": 1795701783557,
+          "kind": "recv",
+          "message": "COMMIT ok tx#4411",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:17",
+          "processId": "ord",
+          "seq": 17,
+          "rawTs": 1795701783565,
+          "kind": "end",
+          "message": "tx#4411 closed",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:18",
+          "processId": "ord",
+          "seq": 18,
+          "rawTs": 1795701783573,
+          "kind": "send",
+          "message": "authorize-ok r-7f21 → gw",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:19",
+          "processId": "ord",
+          "seq": 19,
+          "rawTs": 1795701783617,
+          "kind": "recv",
+          "message": "COMMIT ok tx#4412",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:20",
+          "processId": "ord",
+          "seq": 20,
+          "rawTs": 1795701783625,
+          "kind": "end",
+          "message": "tx#4412 closed",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:21",
+          "processId": "ord",
+          "seq": 21,
+          "rawTs": 1795701783631,
+          "kind": "send",
+          "message": "authorize-ok r-7f21 retry#1 → gw",
+          "requestId": "r-7f21",
+          "level": "warn",
+          "batchId": "b1"
+        },
+        {
+          "id": "ord:22",
+          "processId": "ord",
+          "seq": 22,
+          "rawTs": 1795701783637,
+          "kind": "log",
+          "message": "重复订单已落库",
+          "requestId": "r-7f21",
+          "level": "error",
+          "batchId": "b1"
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge-01",
+          "from": "gw:2",
+          "to": "ord:0",
+          "kind": "rpc",
+          "label": "authorize",
+          "batchId": "b1"
+        },
+        {
+          "id": "edge-02",
+          "from": "gw:5",
+          "to": "ord:9",
+          "kind": "rpc",
+          "label": "authorize retry#1",
+          "batchId": "b1"
+        }
+      ],
+      "calibrations": [
+        {
+          "id": "cal-01-gw",
+          "processId": "gw",
+          "anchorEventId": "gw:0",
+          "refTs": 1795701780000,
+          "errorMs": 18,
+          "breakBefore": false,
+          "source": "NTP",
+          "note": "chrony offset sample",
+          "batchId": "b1"
+        },
+        {
+          "id": "cal-02-gw",
+          "processId": "gw",
+          "anchorEventId": "gw:3",
+          "refTs": 1795701783512,
+          "errorMs": 18,
+          "breakBefore": false,
+          "source": "NTP",
+          "note": "chrony offset sample",
+          "batchId": "b1"
+        },
+        {
+          "id": "cal-03-ord",
+          "processId": "ord",
+          "anchorEventId": "ord:0",
+          "refTs": 1795701780040,
+          "errorMs": 10,
+          "breakBefore": false,
+          "source": "NTP",
+          "note": "chrony offset sample",
+          "batchId": "b1"
+        },
+        {
+          "id": "cal-04-ord",
+          "processId": "ord",
+          "anchorEventId": "ord:15",
+          "refTs": 1795701784120,
+          "errorMs": 10,
+          "breakBefore": false,
+          "source": "NTP",
+          "note": "chrony offset sample",
+          "batchId": "b1"
+        }
+      ]
+    },
+    {
+      "id": "b2",
+      "title": "下游日志",
+      "subtitle": "账本 + 库存缓存",
+      "hint": "链路补全，时钟问题开始显形",
+      "events": [
+        {
+          "id": "db:0",
+          "processId": "db",
+          "seq": 0,
+          "rawTs": 1795701792540,
+          "kind": "recv",
+          "message": "BEGIN tx#4411",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b2"
+        },
+        {
+          "id": "db:1",
+          "processId": "db",
+          "seq": 1,
+          "rawTs": 1795701792550,
+          "kind": "log",
+          "message": "lock sku-8842 acquired",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b2"
+        },
+        {
+          "id": "db:2",
+          "processId": "db",
+          "seq": 2,
+          "rawTs": 1795701792560,
+          "kind": "log",
+          "message": "fsync queue depth 12",
+          "requestId": "r-7f21",
+          "level": "warn",
+          "batchId": "b2"
+        },
+        {
+          "id": "db:3",
+          "processId": "db",
+          "seq": 3,
+          "rawTs": 1795701796404,
+          "kind": "log",
+          "message": "fsync stall 3.8s · io wait",
+          "requestId": "r-7f21",
+          "level": "warn",
+          "batchId": "b2"
+        },
+        {
+          "id": "db:4",
+          "processId": "db",
+          "seq": 4,
+          "rawTs": 1795701796544,
+          "kind": "recv",
+          "message": "BEGIN tx#4412",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b2"
+        },
+        {
+          "id": "db:5",
+          "processId": "db",
+          "seq": 5,
+          "rawTs": 1795701796550,
+          "kind": "log",
+          "message": "lock wait · row sku-8842 held by tx#4411",
+          "requestId": "r-7f21",
+          "level": "warn",
+          "batchId": "b2"
+        },
+        {
+          "id": "db:6",
+          "processId": "db",
+          "seq": 6,
+          "rawTs": 1795701794390,
+          "kind": "log",
+          "message": "commit applied tx#4411",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b2"
+        },
+        {
+          "id": "db:7",
+          "processId": "db",
+          "seq": 7,
+          "rawTs": 1795701794394,
+          "kind": "log",
+          "message": "lock granted to tx#4412",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b2"
+        },
+        {
+          "id": "db:8",
+          "processId": "db",
+          "seq": 8,
+          "rawTs": 1795701794396,
+          "kind": "send",
+          "message": "COMMIT ok tx#4411 → ord",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b2"
+        },
+        {
+          "id": "db:9",
+          "processId": "db",
+          "seq": 9,
+          "rawTs": 1795701794454,
+          "kind": "log",
+          "message": "commit applied tx#4412",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b2"
+        },
+        {
+          "id": "db:10",
+          "processId": "db",
+          "seq": 10,
+          "rawTs": 1795701794458,
+          "kind": "send",
+          "message": "COMMIT ok tx#4412 → ord",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b2"
+        },
+        {
+          "id": "cache:0",
+          "processId": "cache",
+          "seq": 0,
+          "rawTs": 1795701780690,
+          "kind": "recv",
+          "message": "GET stock:sku-8842",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b2"
+        },
+        {
+          "id": "cache:1",
+          "processId": "cache",
+          "seq": 1,
+          "rawTs": 1795701780696,
+          "kind": "log",
+          "message": "HIT stock=12",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b2"
+        },
+        {
+          "id": "cache:2",
+          "processId": "cache",
+          "seq": 2,
+          "rawTs": 1795701780704,
+          "kind": "send",
+          "message": "reply HIT stock=12 → ord",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b2"
+        },
+        {
+          "id": "cache:3",
+          "processId": "cache",
+          "seq": 3,
+          "rawTs": 1795701783621,
+          "kind": "log",
+          "message": "eviction sweep start (256 keys)",
+          "level": "info",
+          "batchId": "b2"
+        },
+        {
+          "id": "cache:4",
+          "processId": "cache",
+          "seq": 4,
+          "rawTs": 1795701783681,
+          "kind": "log",
+          "message": "eviction sweep done · 31 evicted",
+          "level": "info",
+          "batchId": "b2"
+        },
+        {
+          "id": "cache:5",
+          "processId": "cache",
+          "seq": 5,
+          "rawTs": 1795701784692,
+          "kind": "recv",
+          "message": "GET idem:r-7f21",
+          "requestId": "r-7f21",
+          "level": "info",
+          "batchId": "b2"
+        },
+        {
+          "id": "cache:6",
+          "processId": "cache",
+          "seq": 6,
+          "rawTs": 1795701784696,
+          "kind": "log",
+          "message": "MISS idem:r-7f21 · 未写入",
+          "requestId": "r-7f21",
+          "level": "warn",
+          "batchId": "b2"
+        },
+        {
+          "id": "cache:7",
+          "processId": "cache",
+          "seq": 7,
+          "rawTs": 1795701784702,
+          "kind": "send",
+          "message": "reply MISS → ord",
+          "requestId": "r-7f21",
+          "level": "warn",
+          "batchId": "b2"
+        },
+        {
+          "id": "cache:8",
+          "processId": "cache",
+          "seq": 8,
+          "rawTs": 1795701786722,
+          "kind": "log",
+          "message": "keyspace snapshot persisted",
+          "level": "info",
+          "batchId": "b2"
+        }
+      ],
+      "edges": [
+        {
+          "id": "edge-03",
+          "from": "ord:2",
+          "to": "cache:0",
+          "kind": "rpc",
+          "label": "GET stock",
+          "batchId": "b2"
+        },
+        {
+          "id": "edge-04",
+          "from": "cache:2",
+          "to": "ord:3",
+          "kind": "reply",
+          "label": "HIT",
+          "batchId": "b2"
+        },
+        {
+          "id": "edge-05",
+          "from": "ord:6",
+          "to": "db:0",
+          "kind": "rpc",
+          "label": "BEGIN tx#4411",
+          "batchId": "b2"
+        },
+        {
+          "id": "edge-06",
+          "from": "db:8",
+          "to": "ord:16",
+          "kind": "reply",
+          "label": "COMMIT ok #4411",
+          "batchId": "b2"
+        },
+        {
+          "id": "edge-07",
+          "from": "ord:18",
+          "to": "gw:6",
+          "kind": "reply",
+          "label": "authorize-ok",
+          "batchId": "b2"
+        },
+        {
+          "id": "edge-08",
+          "from": "ord:10",
+          "to": "cache:5",
+          "kind": "rpc",
+          "label": "GET idem",
+          "batchId": "b2"
+        },
+        {
+          "id": "edge-09",
+          "from": "cache:7",
+          "to": "ord:11",
+          "kind": "reply",
+          "label": "MISS",
+          "batchId": "b2"
+        },
+        {
+          "id": "edge-10",
+          "from": "ord:15",
+          "to": "db:4",
+          "kind": "rpc",
+          "label": "BEGIN tx#4412",
+          "batchId": "b2"
+        },
+        {
+          "id": "edge-11",
+          "from": "db:10",
+          "to": "ord:19",
+          "kind": "reply",
+          "label": "COMMIT ok #4412",
+          "batchId": "b2"
+        },
+        {
+          "id": "edge-12",
+          "from": "ord:21",
+          "to": "gw:7",
+          "kind": "reply",
+          "label": "authorize-ok retry#1",
+          "batchId": "b2"
+        }
+      ],
+      "calibrations": [
+        {
+          "id": "cal-05-db",
+          "processId": "db",
+          "anchorEventId": "db:0",
+          "refTs": 1795701780140,
+          "errorMs": 25,
+          "breakBefore": false,
+          "source": "NTP",
+          "note": "chrony offset sample",
+          "batchId": "b2"
+        },
+        {
+          "id": "cal-06-db",
+          "processId": "db",
+          "anchorEventId": "db:4",
+          "refTs": 1795701784140,
+          "errorMs": 25,
+          "breakBefore": false,
+          "source": "NTP",
+          "note": "chrony offset sample",
+          "batchId": "b2"
+        },
+        {
+          "id": "cal-07-cache",
+          "processId": "cache",
+          "anchorEventId": "cache:0",
+          "refTs": 1795701780070,
+          "errorMs": 60,
+          "breakBefore": false,
+          "source": "NTP",
+          "note": "coarse NTP, VM under load",
+          "batchId": "b2"
+        }
+      ]
+    },
+    {
+      "id": "b3",
+      "title": "外部证据",
+      "subtitle": "抓包 + 第二组 NTP",
+      "hint": "定位跳变，重算此前结论",
+      "events": [],
+      "edges": [],
+      "calibrations": [
+        {
+          "id": "cal-08-gw",
+          "processId": "gw",
+          "anchorEventId": "gw:5",
+          "refTs": 1795701784050,
+          "errorMs": 6,
+          "breakBefore": false,
+          "source": "抓包",
+          "note": "eBPF capture at edge-01",
+          "batchId": "b3"
+        },
+        {
+          "id": "cal-09-gw",
+          "processId": "gw",
+          "anchorEventId": "gw:9",
+          "refTs": 1795701784494,
+          "errorMs": 22,
+          "breakBefore": false,
+          "source": "NTP",
+          "note": "chrony offset sample",
+          "batchId": "b3"
+        },
+        {
+          "id": "cal-10-db",
+          "processId": "db",
+          "anchorEventId": "db:6",
+          "refTs": 1795701784386,
+          "errorMs": 20,
+          "breakBefore": true,
+          "source": "抓包",
+          "note": "capture shows the clock stepped back before this commit",
+          "batchId": "b3"
+        },
+        {
+          "id": "cal-11-cache",
+          "processId": "cache",
+          "anchorEventId": "cache:8",
+          "refTs": 1795701786100,
+          "errorMs": 25,
+          "breakBefore": false,
+          "source": "外部日志",
+          "note": "cache log shipped with ingest timestamp",
+          "batchId": "b3"
+        }
+      ]
+    }
+  ],
+  "questions": [
+    {
+      "id": "retry-before-idem",
+      "title": "网关重试发送，早于订单服务的幂等复查？",
+      "a": "gw:5",
+      "b": "ord:12",
+      "rationale": "若是，重试就是重复扣款的触发条件，幂等复查本应拦住它。"
+    },
+    {
+      "id": "sweep-done-before-gc-end",
+      "title": "缓存驱逐完成，早于订单服务 GC 暂停结束？",
+      "a": "cache:4",
+      "b": "ord:8",
+      "rationale": "两个后台任务互不调用，发生时间几乎重叠；缓存起初只有一次粗校准。"
+    },
+    {
+      "id": "retry-before-commit2",
+      "title": "网关重试发送，早于账本第二次提交？",
+      "a": "gw:5",
+      "b": "db:9",
+      "rationale": "这条链路有完整因果边；账本时钟还会回跳，因果答案不应受影响。"
+    },
+    {
+      "id": "begin2-before-commit1",
+      "title": "账本第二次 BEGIN，早于第一次 COMMIT 回执？",
+      "a": "db:4",
+      "b": "db:8",
+      "rationale": "同一进程的日志顺序说「是」，但那台机器的原始时钟却往回走了一大截。"
+    },
+    {
+      "id": "sweep-before-timeout",
+      "title": "缓存驱逐完成，早于网关的 3.5s 超时？",
+      "a": "cache:4",
+      "b": "gw:3",
+      "rationale": "两者没有因果关系。第一批日志里缓存还不存在，答案要等第二批。"
+    }
+  ],
+  "truth": {
+    "gw:0": 0,
+    "gw:1": 8,
+    "gw:2": 12,
+    "gw:3": 3512,
+    "gw:4": 3990,
+    "gw:5": 4050,
+    "gw:6": 4426,
+    "gw:7": 4480,
+    "gw:8": 4486,
+    "gw:9": 4494,
+    "ord:0": 40,
+    "ord:1": 52,
+    "ord:2": 58,
+    "ord:3": 96,
+    "ord:4": 104,
+    "ord:5": 108,
+    "ord:6": 118,
+    "ord:7": 3052,
+    "ord:8": 3068,
+    "ord:9": 4056,
+    "ord:10": 4062,
+    "ord:11": 4088,
+    "ord:12": 4092,
+    "ord:13": 4108,
+    "ord:14": 4112,
+    "ord:15": 4120,
+    "ord:16": 4398,
+    "ord:17": 4406,
+    "ord:18": 4414,
+    "ord:19": 4458,
+    "ord:20": 4466,
+    "ord:21": 4472,
+    "ord:22": 4478,
+    "db:0": 140,
+    "db:1": 150,
+    "db:2": 160,
+    "db:3": 4000,
+    "db:4": 4140,
+    "db:5": 4146,
+    "db:6": 4386,
+    "db:7": 4390,
+    "db:8": 4392,
+    "db:9": 4450,
+    "db:10": 4454,
+    "cache:0": 70,
+    "cache:1": 76,
+    "cache:2": 84,
+    "cache:3": 3000,
+    "cache:4": 3060,
+    "cache:5": 4070,
+    "cache:6": 4074,
+    "cache:7": 4080,
+    "cache:8": 6100
+  }
+}
